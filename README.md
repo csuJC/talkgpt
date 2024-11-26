@@ -26,7 +26,7 @@ TalkGPT 是一个结合本地大语言模型和阿里云语音合成 API 的项�
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/your-username/talkgpt.git
+git clone https://github.com/csuJC/talkgpt.git
 cd talkgpt
 conda create -n talkgpt python==3.11
 conda activate talkgpt
