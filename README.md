@@ -36,10 +36,9 @@ poetry install
 
 
 ### 2. 配置阿里云服务
-	1.	登录 [text](https://nls-portal.console.aliyun.com/applist)。
-	2.	创建或选择已有的项目，获取 AppKey。
-	3.	参考获取 Token 概述获取 Token。
-
+1. [登录阿里云服务](https://nls-portal.console.aliyun.com/applist)。
+2. 创建或选择已有的项目，获取 AppKey。
+3. [参考获取 Token 概述](https://help.aliyun.com/document_detail/450479.html)获取 Token。
 
 ### 3. 修改appkey和token
     在app.py相应位置修改。
