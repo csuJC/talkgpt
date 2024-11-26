@@ -9,11 +9,18 @@ from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationChain
 from langchain.prompts import PromptTemplate
 from langchain_community.llms import Ollama
-from tts import TextToSpeechService
+
+import nls  # 阿里云语音合成SDK
 
 console = Console()
 stt = whisper.load_model("base.en")
-tts = TextToSpeechService()
+
+# 阿里云语音合成配置
+
+URL = "wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1"
+TOKEN = "2d1ef4c006af432cb87645385bba4b30"  # 替换为你的Token
+APPKEY = "dl1Mp14q9s3RUEYe"  # 替换为你的AppKey
+
 
 template = """
 You are a helpful and friendly AI assistant. You are polite, respectful, and aim to provide concise responses of less 
@@ -31,21 +38,65 @@ chain = ConversationChain(
     prompt=PROMPT,
     verbose=False,
     memory=ConversationBufferMemory(ai_prefix="Assistant:"),
-    llm=Ollama(),
+    llm=Ollama(model="llama3.2"),
 )
 
 
+class AliyunTTS:
+    def __init__(self, token, appkey):
+        self.token = token
+        self.appkey = appkey
+
+    def synthesize(self, text, output_file):
+        """
+        使用阿里云语音合成API将文本转换为音频
+        """
+        # 清空文件内容（如果存在）
+        with open(output_file, "wb") as f:
+            pass  # 清空文件内容
+        def on_metainfo(message, *args):
+            console.print(f"[cyan]Meta info received: {message}")
+
+        def on_data(data, *args):
+            with open(output_file, "ab") as f:
+                f.write(data)
+
+        def on_error(message, *args):
+            console.print(f"[red]TTS Error: {message}")
+
+        def on_close(*args):
+            # console.print("[cyan]TTS session closed")
+            pass
+
+        def on_completed(message, *args):
+            # console.print("[green]TTS synthesis completed")
+            pass
+
+        tts = nls.NlsSpeechSynthesizer(
+            url=URL,
+            token=self.token,
+            appkey=self.appkey,
+            on_metainfo=on_metainfo,
+            on_data=on_data,
+            on_completed=on_completed,
+            on_error=on_error,
+            on_close=on_close,
+        )
+
+        # 开始语音合成
+        tts.start(
+            text=text,
+            voice="cally",  # 可更换为其他发音人
+            aformat="wav",
+            sample_rate=16000,
+        )
+
+
+
+tts = AliyunTTS(token=TOKEN, appkey=APPKEY)
+
+
 def record_audio(stop_event, data_queue):
-    """
-    Captures audio data from the user's microphone and adds it to a queue for further processing.
-
-    Args:
-        stop_event (threading.Event): An event that, when set, signals the function to stop recording.
-        data_queue (queue.Queue): A queue to which the recorded audio data will be added.
-
-    Returns:
-        None
-    """
     def callback(indata, frames, time, status):
         if status:
             console.print(status)
@@ -59,48 +110,23 @@ def record_audio(stop_event, data_queue):
 
 
 def transcribe(audio_np: np.ndarray) -> str:
-    """
-    Transcribes the given audio data using the Whisper speech recognition model.
-
-    Args:
-        audio_np (numpy.ndarray): The audio data to be transcribed.
-
-    Returns:
-        str: The transcribed text.
-    """
     result = stt.transcribe(audio_np, fp16=False)  # Set fp16=True if using a GPU
     text = result["text"].strip()
     return text
 
 
 def get_llm_response(text: str) -> str:
-    """
-    Generates a response to the given text using the Llama-2 language model.
-
-    Args:
-        text (str): The input text to be processed.
-
-    Returns:
-        str: The generated response.
-    """
     response = chain.predict(input=text)
     if response.startswith("Assistant:"):
         response = response[len("Assistant:") :].strip()
     return response
 
 
-def play_audio(sample_rate, audio_array):
-    """
-    Plays the given audio data using the sounddevice library.
+def play_audio(file_path):
+    import soundfile as sf
 
-    Args:
-        sample_rate (int): The sample rate of the audio data.
-        audio_array (numpy.ndarray): The audio data to be played.
-
-    Returns:
-        None
-    """
-    sd.play(audio_array, sample_rate)
+    data, samplerate = sf.read(file_path, dtype="float32")
+    sd.play(data, samplerate)
     sd.wait()
 
 
@@ -113,7 +139,7 @@ if __name__ == "__main__":
                 "Press Enter to start recording, then press Enter again to stop."
             )
 
-            data_queue = Queue()  # type: ignore[var-annotated]
+            data_queue = Queue()
             stop_event = threading.Event()
             recording_thread = threading.Thread(
                 target=record_audio,
@@ -137,10 +163,19 @@ if __name__ == "__main__":
 
                 with console.status("Generating response...", spinner="earth"):
                     response = get_llm_response(text)
-                    sample_rate, audio_array = tts.long_form_synthesize(response)
 
+                # 立即打印响应到命令行
                 console.print(f"[cyan]Assistant: {response}")
-                play_audio(sample_rate, audio_array)
+
+                # 定义一个线程，用于语音合成和播放
+                def synthesize_and_play():
+                    output_file = "output.wav"
+                    with console.status("Synthesizing speech...", spinner="earth"):
+                        tts.synthesize(response, output_file)
+                    play_audio(output_file)
+
+                # 启动语音合成和播放的线程
+                threading.Thread(target=synthesize_and_play, daemon=True).start()
             else:
                 console.print(
                     "[red]No audio recorded. Please ensure your microphone is working."
