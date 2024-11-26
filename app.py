@@ -1,3 +1,5 @@
+# app.py
+from tts import AliyunTTS
 import time
 import threading
 import numpy as np
@@ -10,17 +12,12 @@ from langchain.chains import ConversationChain
 from langchain.prompts import PromptTemplate
 from langchain_community.llms import Ollama
 
-import nls  # 阿里云语音合成SDK
-
 console = Console()
 stt = whisper.load_model("base.en")
 
 # 阿里云语音合成配置
-
-URL = "wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1"
-TOKEN = "2d1ef4c006af432cb87645385bba4b30"  # 替换为你的Token
-APPKEY = "dl1Mp14q9s3RUEYe"  # 替换为你的AppKey
-
+TOKEN = "yourToken"  # 替换为你的Token
+APPKEY = "yourKey"  # 替换为你的AppKey
 
 template = """
 You are a helpful and friendly AI assistant. You are polite, respectful, and aim to provide concise responses of less 
@@ -41,58 +38,7 @@ chain = ConversationChain(
     llm=Ollama(model="llama3.2"),
 )
 
-
-class AliyunTTS:
-    def __init__(self, token, appkey):
-        self.token = token
-        self.appkey = appkey
-
-    def synthesize(self, text, output_file):
-        """
-        使用阿里云语音合成API将文本转换为音频
-        """
-        # 清空文件内容（如果存在）
-        with open(output_file, "wb") as f:
-            pass  # 清空文件内容
-        def on_metainfo(message, *args):
-            console.print(f"[cyan]Meta info received: {message}")
-
-        def on_data(data, *args):
-            with open(output_file, "ab") as f:
-                f.write(data)
-
-        def on_error(message, *args):
-            console.print(f"[red]TTS Error: {message}")
-
-        def on_close(*args):
-            # console.print("[cyan]TTS session closed")
-            pass
-
-        def on_completed(message, *args):
-            # console.print("[green]TTS synthesis completed")
-            pass
-
-        tts = nls.NlsSpeechSynthesizer(
-            url=URL,
-            token=self.token,
-            appkey=self.appkey,
-            on_metainfo=on_metainfo,
-            on_data=on_data,
-            on_completed=on_completed,
-            on_error=on_error,
-            on_close=on_close,
-        )
-
-        # 开始语音合成
-        tts.start(
-            text=text,
-            voice="cally",  # 可更换为其他发音人
-            aformat="wav",
-            sample_rate=16000,
-        )
-
-
-
+# 实例化 TTS 类
 tts = AliyunTTS(token=TOKEN, appkey=APPKEY)
 
 

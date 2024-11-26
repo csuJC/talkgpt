@@ -1,67 +1,65 @@
-import nltk
-import torch
-import warnings
-import numpy as np
-from transformers import AutoProcessor, BarkModel
+# tts.py
+import nls
+from rich.console import Console
 
-warnings.filterwarnings(
-    "ignore",
-    message="torch.nn.utils.weight_norm is deprecated in favor of torch.nn.utils.parametrizations.weight_norm.",
-)
+console = Console()
 
+# 阿里云语音合成配置
+URL = "wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1"
 
-class TextToSpeechService:
-    def __init__(self, device: str = "cuda" if torch.cuda.is_available() else "cpu"):
+class AliyunTTS:
+    def __init__(self, token: str, appkey: str):
         """
-        Initializes the TextToSpeechService class.
-
-        Args:
-            device (str, optional): The device to be used for the model, either "cuda" if a GPU is available or "cpu".
-            Defaults to "cuda" if available, otherwise "cpu".
+        初始化AliyunTTS实例
+        :param token: 阿里云访问Token
+        :param appkey: 阿里云AppKey
         """
-        self.device = device
-        self.processor = AutoProcessor.from_pretrained("suno/bark-small")
-        self.model = BarkModel.from_pretrained("suno/bark-small")
-        self.model.to(self.device)
+        self.token = token
+        self.appkey = appkey
 
-    def synthesize(self, text: str, voice_preset: str = "v2/en_speaker_1"):
+    def synthesize(self, text: str, output_file: str, voice: str = "cally", sample_rate: int = 16000):
         """
-        Synthesizes audio from the given text using the specified voice preset.
-
-        Args:
-            text (str): The input text to be synthesized.
-            voice_preset (str, optional): The voice preset to be used for the synthesis. Defaults to "v2/en_speaker_1".
-
-        Returns:
-            tuple: A tuple containing the sample rate and the generated audio array.
+        使用阿里云语音合成API将文本转换为音频文件
+        :param text: 要合成的文本
+        :param output_file: 输出的音频文件路径
+        :param voice: 发音人
+        :param sample_rate: 音频采样率，默认为16000
         """
-        inputs = self.processor(text, voice_preset=voice_preset, return_tensors="pt")
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        # 清空文件内容（如果存在）
+        with open(output_file, "wb") as f:
+            pass  # 清空文件内容
 
-        with torch.no_grad():
-            audio_array = self.model.generate(**inputs, pad_token_id=10000)
+        def on_metainfo(message, *args):
+            console.print(f"[cyan]Meta info received: {message}")
 
-        audio_array = audio_array.cpu().numpy().squeeze()
-        sample_rate = self.model.generation_config.sample_rate
-        return sample_rate, audio_array
+        def on_data(data, *args):
+            with open(output_file, "ab") as f:
+                f.write(data)
 
-    def long_form_synthesize(self, text: str, voice_preset: str = "v2/en_speaker_1"):
-        """
-        Synthesizes audio from the given long-form text using the specified voice preset.
+        def on_error(message, *args):
+            console.print(f"[red]TTS Error: {message}")
 
-        Args:
-            text (str): The input text to be synthesized.
-            voice_preset (str, optional): The voice preset to be used for the synthesis. Defaults to "v2/en_speaker_1".
+        def on_close(*args):
+            pass  # 可以选择不打印关闭信息
 
-        Returns:
-            tuple: A tuple containing the sample rate and the generated audio array.
-        """
-        pieces = []
-        sentences = nltk.sent_tokenize(text)
-        silence = np.zeros(int(0.25 * self.model.generation_config.sample_rate))
+        def on_completed(message, *args):
+            pass  # 可以选择不打印完成信息
 
-        for sent in sentences:
-            sample_rate, audio_array = self.synthesize(sent, voice_preset)
-            pieces += [audio_array, silence.copy()]
+        tts = nls.NlsSpeechSynthesizer(
+            url=URL,
+            token=self.token,
+            appkey=self.appkey,
+            on_metainfo=on_metainfo,
+            on_data=on_data,
+            on_completed=on_completed,
+            on_error=on_error,
+            on_close=on_close,
+        )
 
-        return self.model.generation_config.sample_rate, np.concatenate(pieces)
+        # 开始语音合成
+        tts.start(
+            text=text,
+            voice=voice,
+            aformat="wav",
+            sample_rate=sample_rate,
+        )
